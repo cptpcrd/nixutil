@@ -95,7 +95,7 @@ def _check_beneath(cur_fd: int, dir_fd_stat: os.stat_result, orig_path: AnyStr) 
                 # Trying to open ".." brought us the same directory. That means we're at "/"
                 # (the REAL "/").
                 # So we escaped the "beneath" directory.
-                raise ffi.build_oserror(errno.EAGAIN, orig_path)
+                raise ffi.build_oserror(errno.EXDEV, orig_path)
 
             new_fd = os.open("..", DIR_OPEN_FLAGS, dir_fd=cur_fd)
             if cur_fd != orig_fd:
