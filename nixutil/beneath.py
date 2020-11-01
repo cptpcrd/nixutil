@@ -19,7 +19,7 @@ elif sys.platform.startswith("freebsd"):
 
 DIR_OPEN_FLAGS = os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_PATH", 0)
 
-_try_open_beneath: Optional[Callable[..., int]] = getattr(plat_util, "try_open_beneath")
+_try_open_beneath: Optional[Callable[..., int]] = getattr(plat_util, "try_open_beneath", None)
 
 
 def _split_path(
