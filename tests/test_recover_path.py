@@ -21,6 +21,25 @@ def test_recover_fd_path_dir(tmpdir: pathlib.Path) -> None:
         assert nixutil.recover_fd_path(fd) == "/"
 
 
+def test_recover_fd_path_link(tmpdir: pathlib.Path) -> None:
+    os.mkdir(tmpdir / "dir")
+    os.symlink("dir", tmpdir / "link")
+
+    with managed_open(tmpdir / "link", os.O_RDONLY) as fd:
+        # The path that's returned is the path *after* resolving symlinks
+        assert nixutil.recover_fd_path(fd) == os.path.realpath(tmpdir / "dir")
+
+
+def test_recover_fd_path_moved(tmpdir: pathlib.Path) -> None:
+    os.mkdir(tmpdir / "dir")
+
+    with managed_open(tmpdir / "dir", os.O_RDONLY) as fd:
+        os.rename(tmpdir / "dir", tmpdir / "dir2")
+
+        # The path that's returned is the *new* path
+        assert nixutil.recover_fd_path(fd) == os.path.realpath(tmpdir / "dir2")
+
+
 def test_recover_fd_path_dir_deleted(tmpdir: pathlib.Path) -> None:
     os.mkdir(tmpdir / "a")
 
