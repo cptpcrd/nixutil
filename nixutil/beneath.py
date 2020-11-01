@@ -85,7 +85,7 @@ def open_beneath(
         )
     finally:
         if new_dir_fd != dir_fd:
-            os.close(new_dir_fd)
+            os.close(new_dir_fd)  # pytype: disable=bad-return-type
 
 
 def _check_beneath(cur_fd: int, dir_fd_stat: os.stat_result, orig_path: AnyStr) -> None:
