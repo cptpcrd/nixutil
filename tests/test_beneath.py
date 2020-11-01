@@ -1,6 +1,8 @@
 import contextlib
+import errno
 import os
 import pathlib
+import re
 import sys
 from typing import Any, Generator
 
@@ -38,7 +40,7 @@ def test_open_beneath_basic() -> None:
             nixutil.open_beneath("a", os.O_RDONLY, dir_fd=file.fileno())
 
 
-def test_open_beneath_resolve_in_root(tmp_path: pathlib.Path) -> None:
+def test_open_beneath(tmp_path: pathlib.Path) -> None:
     os.mkdir(tmp_path / "a")
 
     with open(tmp_path / "b", "w"):
@@ -58,193 +60,54 @@ def test_open_beneath_resolve_in_root(tmp_path: pathlib.Path) -> None:
     try:
         tmp_stat = os.stat(tmp_dfd)
 
-        # Without ALLOW_PARENT_ELEMS
-        with open_beneath_managed(
-            "/",
-            os.O_RDONLY,
-            dir_fd=tmp_dfd,
-        ) as fd:
-            assert os.path.samestat(os.stat(fd), tmp_stat)
-
-        # Trying to escape with "/" and ".."
-        with open_beneath_managed(
-            "/",
-            os.O_RDONLY,
-            dir_fd=tmp_dfd,
-        ) as fd:
-            assert os.path.samestat(os.stat(fd), tmp_stat)
-
-        with open_beneath_managed(
-            "..",
-            os.O_RDONLY,
-            dir_fd=tmp_dfd,
-        ) as fd:
-            assert os.path.samestat(os.stat(fd), tmp_stat)
-
-        with open_beneath_managed(
-            "/..",
-            os.O_RDONLY,
-            dir_fd=tmp_dfd,
-        ) as fd:
-            assert os.path.samestat(os.stat(fd), tmp_stat)
-
-        with open_beneath_managed(
-            "a/../..",
-            os.O_RDONLY,
-            dir_fd=tmp_dfd,
-        ) as fd:
-            assert os.path.samestat(os.stat(fd), tmp_stat)
-
-        with open_beneath_managed(
-            "/a/../..",
-            os.O_RDONLY,
-            dir_fd=tmp_dfd,
-        ) as fd:
-            assert os.path.samestat(os.stat(fd), tmp_stat)
-
-        # Opening back to the parent
-        with open_beneath_managed(
-            "a/..",
-            os.O_RDONLY,
-            dir_fd=tmp_dfd,
-        ) as fd:
-            assert os.path.samestat(os.stat(fd), tmp_stat)
-
-        with open_beneath_managed(
-            "a/e/../..",
-            os.O_RDONLY,
-            dir_fd=tmp_dfd,
-        ) as fd:
-            assert os.path.samestat(os.stat(fd), tmp_stat)
-
-        # Opening regular files/directories
-        with open_beneath_managed(
-            "a",
-            os.O_RDONLY,
-            dir_fd=tmp_dfd,
-        ) as fd:
-            assert os.path.samestat(os.stat(fd), os.stat("a", dir_fd=tmp_dfd))
-
-        with open_beneath_managed(
-            "a/.",
-            os.O_RDONLY,
-            dir_fd=tmp_dfd,
-        ) as fd:
-            assert os.path.samestat(os.stat(fd), os.stat("a", dir_fd=tmp_dfd))
-
-        with open_beneath_managed(
-            "a/e",
-            os.O_RDONLY,
-            dir_fd=tmp_dfd,
-        ) as fd:
-            assert os.path.samestat(os.stat(fd), os.stat("a/e", dir_fd=tmp_dfd))
-
-        with open_beneath_managed(
-            "a/e/../e",
-            os.O_RDONLY,
-            dir_fd=tmp_dfd,
-        ) as fd:
-            assert os.path.samestat(os.stat(fd), os.stat("a/e", dir_fd=tmp_dfd))
-
-        with open_beneath_managed(
-            "a/e/..",
-            os.O_RDONLY,
-            dir_fd=tmp_dfd,
-        ) as fd:
-            assert os.path.samestat(os.stat(fd), os.stat("a", dir_fd=tmp_dfd))
-
-        with open_beneath_managed(
-            "b",
-            os.O_RDONLY,
-            dir_fd=tmp_dfd,
-        ) as fd:
-            assert os.path.samestat(os.stat(fd), os.stat("b", dir_fd=tmp_dfd))
-
-        # Opening a relative symlink works
-        with open_beneath_managed(
-            "c",
-            os.O_RDONLY,
-            dir_fd=tmp_dfd,
-        ) as fd:
-            assert os.path.samestat(os.stat(fd), os.stat("b", dir_fd=tmp_dfd))
-
-        # Opening an absolute symlink is done relative to the initial parent
-        with open_beneath_managed(
-            "d",
-            os.O_RDONLY,
-            dir_fd=tmp_dfd,
-        ) as fd:
-            assert os.path.samestat(os.stat(fd), os.stat("b", dir_fd=tmp_dfd))
-
-        # Opening a symlink to a directory works
-        with open_beneath_managed(
-            "f",
-            os.O_RDONLY,
-            dir_fd=tmp_dfd,
-        ) as fd:
-            assert os.path.samestat(os.stat(fd), os.stat("a/e", dir_fd=tmp_dfd))
-
-        with open_beneath_managed(
-            "f/..",
-            os.O_RDONLY,
-            dir_fd=tmp_dfd,
-        ) as fd:
-            assert os.path.samestat(os.stat(fd), os.stat("a", dir_fd=tmp_dfd))
-
-        with open_beneath_managed(
-            "f/..",
-            os.O_RDONLY | os.O_NOFOLLOW,
-            dir_fd=tmp_dfd,
-        ) as fd:
-            assert os.path.samestat(os.stat(fd), os.stat("a", dir_fd=tmp_dfd))
-
-        with pytest.raises(FileNotFoundError):
-            nixutil.open_beneath(
-                "NOEXIST",
-                os.O_RDONLY,
-                dir_fd=tmp_dfd,
-                no_symlinks=True,
+        for (path, flags, stat_fname) in [
+            ("/", os.O_RDONLY, None),
+            ("..", os.O_RDONLY, None),
+            ("/..", os.O_RDONLY, None),
+            ("a/..", os.O_RDONLY, None),
+            ("/a/..", os.O_RDONLY, None),
+            ("a/../..", os.O_RDONLY, None),
+            ("/a/../..", os.O_RDONLY, None),
+            ("a/e/../..", os.O_RDONLY, None),
+            ("a/e/../../..", os.O_RDONLY, None),
+            ("a", os.O_RDONLY, "a"),
+            ("a/.", os.O_RDONLY, "a"),
+            ("a/e/..", os.O_RDONLY, "a"),
+            ("a/e", os.O_RDONLY, "a/e"),
+            ("a/e/../e", os.O_RDONLY, "a/e"),
+            ("b", os.O_RDONLY, "b"),
+            ("c", os.O_RDONLY, "b"),
+            ("d", os.O_RDONLY, "b"),
+            ("f", os.O_RDONLY, "a/e"),
+            ("f/..", os.O_RDONLY, "a"),
+            ("f/..", os.O_RDONLY | os.O_NOFOLLOW, "a"),
+        ]:
+            expect_stat = (
+                tmp_stat
+                if stat_fname is None
+                else os.stat(stat_fname, dir_fd=tmp_dfd, follow_symlinks=False)
             )
 
-        with pytest.raises(NotADirectoryError):
-            nixutil.open_beneath(
-                "b/a",
-                os.O_RDONLY,
+            with open_beneath_managed(
+                path,
+                flags,
                 dir_fd=tmp_dfd,
-                no_symlinks=True,
-            )
+            ) as fd:
+                assert os.path.samestat(os.stat(fd), expect_stat)
 
-        # Symlink loop
-        with pytest.raises(OSError, match="[sS]ymbolic links"):
-            nixutil.open_beneath(
-                "recur",
-                os.O_RDONLY,
-                dir_fd=tmp_dfd,
-            )
-
-        # No symlinks allowed
-        with pytest.raises(OSError, match="[sS]ymbolic links"):
-            nixutil.open_beneath(
-                "d",
-                os.O_RDONLY,
-                dir_fd=tmp_dfd,
-                no_symlinks=True,
-            )
-
-        with pytest.raises(OSError, match="[sS]ymbolic links"):
-            nixutil.open_beneath(
-                "d",
-                os.O_RDONLY | os.O_NOFOLLOW,
-                dir_fd=tmp_dfd,
-            )
-
-        with pytest.raises(OSError, match="[sS]ymbolic links"):
-            nixutil.open_beneath(
-                "f/..",
-                os.O_RDONLY,
-                dir_fd=tmp_dfd,
-                no_symlinks=True,
-            )
+        for (path, flags, kwargs, eno) in [
+            ("NOEXIST", os.O_RDONLY, {"no_symlinks": True}, errno.ENOENT),
+            ("b/a", os.O_RDONLY, {"no_symlinks": True}, errno.ENOTDIR),
+            ("d", os.O_RDONLY, {"no_symlinks": True}, errno.ELOOP),
+            ("d", os.O_RDONLY | os.O_NOFOLLOW, {"no_symlinks": False}, errno.ELOOP),
+            ("f", os.O_RDONLY | os.O_NOFOLLOW, {"no_symlinks": False}, errno.ELOOP),
+            ("f", os.O_RDONLY, {"no_symlinks": True}, errno.ELOOP),
+            ("f/..", os.O_RDONLY, {"no_symlinks": True}, errno.ELOOP),
+        ]:
+            with pytest.raises(
+                OSError, match="^" + re.escape("[Errno {}] {}".format(eno, os.strerror(eno)))
+            ):
+                nixutil.open_beneath(path, flags, dir_fd=tmp_dfd, **kwargs)
 
     finally:
         os.close(tmp_dfd)
