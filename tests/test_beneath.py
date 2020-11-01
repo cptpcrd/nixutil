@@ -80,6 +80,7 @@ def test_open_beneath(tmp_path: pathlib.Path) -> None:
             ("d", os.O_RDONLY, "b"),
             ("f", os.O_RDONLY, "a/e"),
             ("f/..", os.O_RDONLY, "a"),
+            (b"f/..", os.O_RDONLY, "a"),
             ("f/..", os.O_RDONLY | os.O_NOFOLLOW, "a"),
         ]:
             expect_stat = (
