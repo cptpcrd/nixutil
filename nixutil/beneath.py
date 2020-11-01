@@ -3,7 +3,7 @@ import errno
 import os
 import stat
 import sys
-from typing import AnyStr, Generator, List, Optional, Tuple, Union
+from typing import AnyStr, Callable, Generator, List, Optional, Tuple, Union
 
 from . import ffi, plat_util
 
@@ -18,6 +18,8 @@ elif sys.platform.startswith("freebsd"):
     ENOTCAPABLE = 93
 
 DIR_OPEN_FLAGS = os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_PATH", 0)
+
+_try_open_beneath: Optional[Callable[..., int]] = getattr(plat_util, "try_open_beneath")
 
 
 def _split_path(
@@ -52,10 +54,8 @@ def open_beneath(
 ) -> int:
     path = os.fspath(path)
 
-    if hasattr(plat_util, "try_open_beneath"):
-        fd = plat_util.try_open_beneath(
-            path, flags, mode=mode, dir_fd=dir_fd, no_symlinks=no_symlinks
-        )
+    if _try_open_beneath is not None:
+        fd = _try_open_beneath(path, flags, mode=mode, dir_fd=dir_fd, no_symlinks=no_symlinks)
         if fd is not None:
             return fd
 
