@@ -1,8 +1,10 @@
 # pylint: disable=invalid-name,too-few-public-methods
 import ctypes
+import errno
 import os
-from typing import Iterator, Optional
+from typing import AnyStr, Iterator, Optional
 
+from .. import ffi
 from . import bsd_util
 
 CTL_KERN = 1
@@ -29,6 +31,11 @@ _SS_PAD2SIZE = (
 )
 
 CAP_RIGHTS_VERSION = 0
+
+O_BENEATH = 0x00400000
+O_RESOLVE_BENEATH = 0x00800000
+
+ENOTCAPABLE = 93
 
 
 class SockaddrStorage(ctypes.Structure):
@@ -189,3 +196,66 @@ def try_recover_fd_path(fd: int) -> Optional[str]:
             return os.fsdecode(kfile.kf_path) or None
 
     return None
+
+
+def check_o_beneath_works() -> bool:
+    # Only available on FreeBSD 13+
+    if int(os.uname().release.split(".")[0]) < 13:
+        return False
+
+    # Opening an absolute path with O_RESOLVE_BENEATH should fail with EINVAL.
+    # If that works, we assume that O_BENEATH will work too.
+
+    try:
+        fd = os.open("/", os.O_RDONLY | O_RESOLVE_BENEATH)
+    except OSError as ex:
+        return ex.errno == errno.EINVAL
+    else:
+        os.close(fd)
+        return False
+
+
+o_beneath_works: Optional[bool] = None
+
+
+def try_open_beneath(
+    path: AnyStr,
+    flags: int,
+    *,
+    mode: int,
+    dir_fd: Optional[int],
+    no_symlinks: bool,
+) -> Optional[int]:
+    global o_beneath_works  # pylint: disable=global-statement
+
+    if no_symlinks:
+        return None
+
+    if o_beneath_works is None:
+        o_beneath_works = check_o_beneath_works()
+
+    if not o_beneath_works:
+        return None
+
+    # Check if it's empty before we strip leading slashes
+    if not path:
+        raise ffi.build_oserror(errno.ENOENT, path)
+
+    # O_RESOLVE_BENEATH doesn't like leading slashes
+    path = path.lstrip(b"/" if isinstance(path, bytes) else "/")
+    if not path:
+        # The path was entirely slashes
+        return os.open(".", flags, dir_fd=dir_fd)
+
+    try:
+        return os.open(path, flags | os.O_NOCTTY | O_BENEATH | O_RESOLVE_BENEATH, mode=mode, dir_fd=dir_fd)
+    except OSError as ex:
+        if ex.errno == ENOTCAPABLE:
+            # FreeBSD is pickier about some things, including ".." components (if certain sysctls
+            # are enabled). Fall back on the regular method in this case.
+            return None
+        elif ex.errno == errno.EMLINK:
+            # Translate EMLINK to ELOOP for compatibility
+            raise ffi.build_oserror(errno.ELOOP, path)
+        else:
+            raise
