@@ -2,20 +2,9 @@ import collections
 import errno
 import os
 import stat
-import sys
 from typing import AnyStr, Callable, Generator, List, Optional, Tuple, Union
 
 from . import ffi, plat_util
-
-IS_LINUX = False
-IS_FREEBSD = False
-
-if sys.platform.startswith("linux"):
-    IS_LINUX = True
-
-elif sys.platform.startswith("freebsd"):
-    IS_FREEBSD = True
-    ENOTCAPABLE = 93
 
 DIR_OPEN_FLAGS = os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_PATH", 0)
 
