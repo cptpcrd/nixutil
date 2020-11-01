@@ -29,7 +29,7 @@ def test_recover_fd_path_dir_deleted(tmpdir: pathlib.Path) -> None:
 
         # Either it returns the correct path or raises a FileNotFoundError.
         try:
-            assert nixutil.recover_fd_path(fd) == str(tmpdir.resolve() / "a")
+            assert nixutil.recover_fd_path(fd) == os.path.join(os.path.realpath(tmpdir), "a")
         except FileNotFoundError:
             pass
 
