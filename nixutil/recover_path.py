@@ -1,6 +1,7 @@
 import errno
 import os
 import stat
+import sys
 
 from . import ffi, plat_util
 
@@ -70,32 +71,53 @@ def recover_fd_path(fd: int) -> str:
                 raise ffi.build_oserror(errno.ENOENT)
 
         try:
-            with os.scandir(parent_fd) as parent_dir_it:
-                for entry in parent_dir_it:
-                    # We can't check entry.inode() for speedups because that doesn't work properly
-                    # if the file that was pointed to by `sub_fd` is a mountpoint.
-
-                    try:
-                        if not entry.is_dir(follow_symlinks=False) or not os.path.samestat(
-                            sub_stat, entry.stat(follow_symlinks=False)
-                        ):
-                            continue
-                    except OSError:
-                        # Yes, errors could occur when trying to stat() it. For example, trying to
-                        # stat() the root directory of a FUSE filesystem that died without being
-                        # properly unmounted will fail with ENOTCONN.
-                        continue
-
-                    built_path = os.path.join(entry.name, built_path) if built_path else entry.name
-                    break
-
-                else:
-                    # Unable to find a matching entry; probably means the directory was deleted
-                    raise ffi.build_oserror(errno.ENOENT)
-
+            fname = _recover_fname(parent_fd, sub_stat)
         except OSError:
             os.close(parent_fd)
             raise
 
+        built_path = os.path.join(fname, built_path) if built_path else fname
+
         sub_fd = parent_fd
         sub_stat = parent_stat
+
+
+if sys.version_info >= (3, 7):
+
+    def _recover_fname(parent_fd: int, sub_stat: os.stat_result) -> str:
+        with os.scandir(parent_fd) as parent_dir_it:
+            for entry in parent_dir_it:
+                try:
+                    # We can't check entry.inode() for speedups because that doesn't work properly
+                    # if the file that was pointed to by `sub_fd` is a mountpoint.
+
+                    if entry.is_dir(follow_symlinks=False) and os.path.samestat(
+                        sub_stat, entry.stat(follow_symlinks=False)
+                    ):
+                        return entry.name
+
+                except OSError:
+                    # Yes, errors could occur when trying to stat() it. For example, trying to
+                    # stat() the root directory of a FUSE filesystem that died without being
+                    # properly unmounted will fail with ENOTCONN.
+                    pass
+
+        # Unable to find a matching entry; probably means the directory was deleted
+        raise ffi.build_oserror(errno.ENOENT)
+
+
+else:
+
+    def _recover_fname(parent_fd: int, sub_stat: os.stat_result) -> str:
+        for fname in os.listdir(parent_fd):
+            try:
+                if os.path.samestat(
+                    sub_stat, os.stat(fname, dir_fd=parent_fd, follow_symlinks=False)
+                ):
+                    return fname
+
+            except OSError:
+                pass
+
+        # Unable to find a matching entry; probably means the directory was deleted
+        raise ffi.build_oserror(errno.ENOENT)
