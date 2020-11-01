@@ -52,28 +52,12 @@ def open_beneath(
 ) -> int:
     path = os.fspath(path)
 
-    if IS_LINUX:
-        try:
-            resolve_flags = plat_util.ResolveFlags.NO_MAGICLINKS | plat_util.ResolveFlags.IN_ROOT
-            if no_symlinks:
-                resolve_flags |= plat_util.ResolveFlags.NO_SYMLINKS
-
-            return plat_util.openat2(
-                path,
-                plat_util.OpenHow(
-                    flags=flags,
-                    mode=(
-                        mode
-                        if flags & os.O_CREAT == os.O_CREAT or flags & os.O_TMPFILE == os.O_TMPFILE
-                        else 0
-                    ),
-                    resolve=resolve_flags,
-                ),
-                dir_fd=dir_fd,
-            )
-        except OSError as ex:
-            if ex.errno not in (errno.E2BIG, errno.ENOSYS):
-                raise
+    if hasattr(plat_util, "try_open_beneath"):
+        fd = plat_util.try_open_beneath(
+            path, flags, mode=mode, dir_fd=dir_fd, no_symlinks=no_symlinks
+        )
+        if fd is not None:
+            return fd
 
     slash: AnyStr
     dot: AnyStr
