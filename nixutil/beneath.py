@@ -6,7 +6,10 @@ from typing import AnyStr, Callable, Generator, List, Optional, Tuple, Union
 
 from . import ffi, plat_util
 
-DIR_OPEN_FLAGS = os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_PATH", 0)
+DIR_OPEN_FLAGS = os.O_DIRECTORY
+
+# Use O_PATH or O_SEARCH if available, otherwise just O_RDONLY
+DIR_OPEN_FLAGS |= getattr(os, "O_PATH", getattr(os, "O_SEARCH", os.O_RDONLY))
 
 _try_open_beneath: Optional[Callable[..., int]] = getattr(plat_util, "try_open_beneath", None)
 
