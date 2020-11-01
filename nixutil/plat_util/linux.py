@@ -56,7 +56,10 @@ def try_open_beneath(
     how = _OpenHow(
         flags=flags | os.O_CLOEXEC,
         mode=(
-            mode if flags & os.O_CREAT == os.O_CREAT or flags & os.O_TMPFILE == os.O_TMPFILE else 0
+            mode
+            if flags & os.O_CREAT == os.O_CREAT  # pylint: disable=no-member
+            or flags & os.O_TMPFILE == os.O_TMPFILE  # pylint: disable=no-member
+            else 0
         ),
         resolve=resolve_flags,
     )
