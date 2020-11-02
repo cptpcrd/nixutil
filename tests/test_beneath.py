@@ -139,6 +139,9 @@ def test_open_beneath(tmp_path: pathlib.Path) -> None:
                 ("f", os.O_RDONLY | os.O_NOFOLLOW, {"no_symlinks": False}, errno.ELOOP),
                 ("f", os.O_RDONLY, {"no_symlinks": True}, errno.ELOOP),
                 ("f/..", os.O_RDONLY, {"no_symlinks": True}, errno.ELOOP),
+                ("recur", os.O_RDONLY, {"no_symlinks": False}, errno.ELOOP),
+                ("a/../recur", os.O_RDONLY, {"no_symlinks": False}, errno.ELOOP),
+                ("recur/a", os.O_RDONLY, {"no_symlinks": False}, errno.ELOOP),
             ]:
                 with pytest.raises(
                     OSError, match="^" + re.escape("[Errno {}] {}".format(eno, os.strerror(eno)))
@@ -160,14 +163,12 @@ def test_open_beneath_escape(tmp_path: pathlib.Path) -> None:
     # Simulate a race condition by moving "a/b" out of "a" after it's descended in
 
     def audit_func(desc: str, fd: int, name: str) -> None:  # pylint: disable=unused-argument
-        if desc == "before" and name == "..":
+        if desc == "before" and name == ".." and os.path.exists(tmp_path / "a/b"):
             os.rename(tmp_path / "a/b", tmp_path / "b")
 
     with managed_open(tmp_path / "a", os.O_RDONLY) as a_dfd:
-        with pytest.raises(OSError, match="^" + re.escape("[Errno {}]".format(errno.EXDEV))):
-            nixutil.open_beneath(
-                "b/..",
-                os.O_RDONLY,
-                dir_fd=a_dfd,
-                audit_func=audit_func,
-            )
+        for path in ["b/..", "b/../..", "b/../b", "b/../../a"]:
+            with pytest.raises(OSError, match="^" + re.escape("[Errno {}]".format(errno.EXDEV))):
+                nixutil.open_beneath(path, os.O_RDONLY, dir_fd=a_dfd, audit_func=audit_func)
+
+            os.rename(tmp_path / "b", tmp_path / "a/b")
