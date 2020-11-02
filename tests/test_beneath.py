@@ -30,7 +30,7 @@ def test_open_beneath_basic() -> None:
         nixutil.open_beneath("/", os.O_RDONLY, dir_fd="a")  # type: ignore
 
     with pytest.raises(TypeError):
-        nixutil.open_beneath(
+        nixutil.open_beneath(  # pytype: disable=wrong-arg-types
             "/", os.O_RDONLY, dir_fd="a", audit_func=lambda desc, fd, name: None  # type: ignore
         )
 
