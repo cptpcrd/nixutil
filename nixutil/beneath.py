@@ -272,7 +272,7 @@ def _open_beneath(
             assert cur_fd != dir_fd
             _check_beneath(cur_fd, dir_fd_stat, orig_path)
 
-    except OSError:
+    except BaseException:  # pylint: disable=broad-except
         if cur_fd != dir_fd:
             os.close(cur_fd)
 
