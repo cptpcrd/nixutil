@@ -43,10 +43,11 @@ def open_beneath(
     dir_fd: Optional[int] = None,
     no_symlinks: bool = False,
     remember_parents: bool = False,
+    audit_func: Optional[Callable[[str, int, AnyStr], None]] = None,
 ) -> int:
     path = os.fspath(path)
 
-    if _try_open_beneath is not None:
+    if audit_func is None and _try_open_beneath is not None:
         fd = _try_open_beneath(path, flags, mode=mode, dir_fd=dir_fd, no_symlinks=no_symlinks)
         if fd is not None:
             return fd
@@ -74,6 +75,7 @@ def open_beneath(
             slash=slash,
             dot=dot,
             remember_parents=remember_parents,
+            audit_func=audit_func,
         )
     finally:
         if new_dir_fd != dir_fd:
@@ -122,6 +124,7 @@ def _open_beneath(
     slash: AnyStr,
     dot: AnyStr,
     remember_parents: bool,
+    audit_func: Optional[Callable[[str, int, AnyStr], None]] = None,
 ) -> int:
     dir_fd_stat = os.fstat(dir_fd)
 
@@ -159,6 +162,9 @@ def _open_beneath(
     try:
         while parts:
             part, flags = parts.popleft()
+
+            if audit_func is not None:
+                audit_func("before", cur_fd, part)
 
             old_fd = cur_fd
 
@@ -228,6 +234,13 @@ def _open_beneath(
                                     raise ffi.build_oserror(errno.EAGAIN, orig_path) from ex2
                             else:
                                 raise
+
+                        if audit_func is not None:
+                            audit_func(
+                                "symlink",
+                                cur_fd,
+                                (os.fsencode(target) if isinstance(orig_path, bytes) else target),
+                            )
 
                         found_symlinks += 1
                         if flags & os.O_NOFOLLOW or found_symlinks > max_symlinks:
