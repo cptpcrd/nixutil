@@ -1,14 +1,17 @@
 import contextlib
 import errno
+import itertools
 import os
 import pathlib
 import re
 import sys
-from typing import Any, Generator
+from typing import Any, Dict, Generator, cast
 
 import pytest
 
 import nixutil
+
+from .util import managed_open
 
 
 @contextlib.contextmanager
@@ -53,62 +56,101 @@ def test_open_beneath(tmp_path: pathlib.Path) -> None:
 
     os.symlink("a/e", tmp_path / "f")
 
+    os.symlink("../../b", tmp_path / "a/e/g")
+    os.symlink("/b", tmp_path / "a/e/h")
+    os.symlink("/a", tmp_path / "a/e/i")
+
+    os.mkdir(tmp_path / "a/e/j")
+
     os.symlink("recur", tmp_path / "recur")
 
-    tmp_dfd = os.open(tmp_path, os.O_RDONLY)
-
-    try:
+    with managed_open(tmp_path, os.O_RDONLY) as tmp_dfd:
         tmp_stat = os.stat(tmp_dfd)
 
-        for (path, flags, stat_fname) in [
-            ("/", os.O_RDONLY, None),
-            ("..", os.O_RDONLY, None),
-            ("/..", os.O_RDONLY, None),
-            ("a/..", os.O_RDONLY, None),
-            ("/a/..", os.O_RDONLY, None),
-            ("a/../..", os.O_RDONLY, None),
-            ("/a/../..", os.O_RDONLY, None),
-            ("a/e/../..", os.O_RDONLY, None),
-            ("a/e/../../..", os.O_RDONLY, None),
-            ("a", os.O_RDONLY, "a"),
-            ("a/.", os.O_RDONLY, "a"),
-            ("a/e/..", os.O_RDONLY, "a"),
-            ("a/e", os.O_RDONLY, "a/e"),
-            ("a/e/../e", os.O_RDONLY, "a/e"),
-            ("b", os.O_RDONLY, "b"),
-            ("c", os.O_RDONLY, "b"),
-            ("d", os.O_RDONLY, "b"),
-            ("f", os.O_RDONLY, "a/e"),
-            ("f/..", os.O_RDONLY, "a"),
-            (b"f/..", os.O_RDONLY, "a"),
-            ("f/..", os.O_RDONLY | os.O_NOFOLLOW, "a"),
-        ]:
-            expect_stat = (
-                tmp_stat
-                if stat_fname is None
-                else os.stat(stat_fname, dir_fd=tmp_dfd, follow_symlinks=False)
+        for remember_parents, audit_func in itertools.product(
+            [False, True], [None, lambda desc, fd, name: None]
+        ):
+            for (path, flags, stat_fname) in [
+                ("/", os.O_RDONLY, None),
+                ("..", os.O_RDONLY, None),
+                (".", os.O_RDONLY, None),
+                ("/..", os.O_RDONLY, None),
+                ("a/..", os.O_RDONLY, None),
+                ("/a/..", os.O_RDONLY, None),
+                ("a/../..", os.O_RDONLY, None),
+                ("/a/../..", os.O_RDONLY, None),
+                ("a/e/../..", os.O_RDONLY, None),
+                ("a/e/../../..", os.O_RDONLY, None),
+                ("a", os.O_RDONLY, "a"),
+                ("a/.", os.O_RDONLY, "a"),
+                ("a/e/..", os.O_RDONLY, "a"),
+                ("a/e", os.O_RDONLY, "a/e"),
+                ("a/e/../e", os.O_RDONLY, "a/e"),
+                ("b", os.O_RDONLY, "b"),
+                ("c", os.O_RDONLY, "b"),
+                ("d", os.O_RDONLY, "b"),
+                ("f", os.O_RDONLY, "a/e"),
+                ("f/..", os.O_RDONLY, "a"),
+                (b"f/..", os.O_RDONLY, "a"),
+                ("f/..", os.O_RDONLY | os.O_NOFOLLOW, "a"),
+                ("a/e/g", os.O_RDONLY, "b"),
+                ("a/e/h", os.O_RDONLY, "b"),
+                ("a/e/i/e", os.O_RDONLY, "a/e"),
+                ("a/e/j/..", os.O_RDONLY, "a/e"),
+            ]:
+                expect_stat = (
+                    tmp_stat
+                    if stat_fname is None
+                    else os.stat(stat_fname, dir_fd=tmp_dfd, follow_symlinks=False)
+                )
+
+                with open_beneath_managed(
+                    path,
+                    flags,
+                    dir_fd=tmp_dfd,
+                    remember_parents=remember_parents,
+                    audit_func=audit_func,
+                ) as fd:
+                    assert os.path.samestat(os.stat(fd), expect_stat)
+
+            for (path, flags, kwargs, eno) in [
+                ("NOEXIST", os.O_RDONLY, {"no_symlinks": True}, errno.ENOENT),
+                ("a/NOEXIST", os.O_RDONLY, {"no_symlinks": True}, errno.ENOENT),
+                ("b/a", os.O_RDONLY, {"no_symlinks": True}, errno.ENOTDIR),
+                ("d", os.O_RDONLY, {"no_symlinks": True}, errno.ELOOP),
+                ("d", os.O_RDONLY | os.O_NOFOLLOW, {"no_symlinks": False}, errno.ELOOP),
+                ("f", os.O_RDONLY | os.O_NOFOLLOW, {"no_symlinks": False}, errno.ELOOP),
+                ("f", os.O_RDONLY, {"no_symlinks": True}, errno.ELOOP),
+                ("f/..", os.O_RDONLY, {"no_symlinks": True}, errno.ELOOP),
+            ]:
+                with pytest.raises(
+                    OSError, match="^" + re.escape("[Errno {}] {}".format(eno, os.strerror(eno)))
+                ):
+                    nixutil.open_beneath(
+                        path,
+                        flags,
+                        dir_fd=tmp_dfd,
+                        remember_parents=remember_parents,
+                        audit_func=audit_func,
+                        **cast(Dict[str, Any], kwargs)
+                    )
+
+
+def test_open_beneath_escape(tmp_path: pathlib.Path) -> None:
+    os.mkdir(tmp_path / "a")
+    os.mkdir(tmp_path / "a/b")
+
+    # Simulate a race condition by moving "a/b" out of "a" after it's descended in
+
+    def audit_func(desc: str, fd: int, name: str) -> None:  # pylint: disable=unused-argument
+        if desc == "before" and name == "..":
+            os.rename(tmp_path / "a/b", tmp_path / "b")
+
+    with managed_open(tmp_path / "a", os.O_RDONLY) as a_dfd:
+        with pytest.raises(OSError, match="^" + re.escape("[Errno {}]".format(errno.EXDEV))):
+            nixutil.open_beneath(
+                "b/..",
+                os.O_RDONLY,
+                dir_fd=a_dfd,
+                audit_func=audit_func,
             )
-
-            with open_beneath_managed(
-                path,
-                flags,
-                dir_fd=tmp_dfd,
-            ) as fd:
-                assert os.path.samestat(os.stat(fd), expect_stat)
-
-        for (path, flags, kwargs, eno) in [
-            ("NOEXIST", os.O_RDONLY, {"no_symlinks": True}, errno.ENOENT),
-            ("b/a", os.O_RDONLY, {"no_symlinks": True}, errno.ENOTDIR),
-            ("d", os.O_RDONLY, {"no_symlinks": True}, errno.ELOOP),
-            ("d", os.O_RDONLY | os.O_NOFOLLOW, {"no_symlinks": False}, errno.ELOOP),
-            ("f", os.O_RDONLY | os.O_NOFOLLOW, {"no_symlinks": False}, errno.ELOOP),
-            ("f", os.O_RDONLY, {"no_symlinks": True}, errno.ELOOP),
-            ("f/..", os.O_RDONLY, {"no_symlinks": True}, errno.ELOOP),
-        ]:
-            with pytest.raises(
-                OSError, match="^" + re.escape("[Errno {}] {}".format(eno, os.strerror(eno)))
-            ):
-                nixutil.open_beneath(path, flags, dir_fd=tmp_dfd, **kwargs)
-
-    finally:
-        os.close(tmp_dfd)
