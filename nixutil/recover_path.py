@@ -94,7 +94,7 @@ if sys.version_info >= (3, 7):
                     if entry.is_dir(follow_symlinks=False) and os.path.samestat(
                         sub_stat, entry.stat(follow_symlinks=False)
                     ):
-                        return entry.name
+                        return entry.name  # pytype: disable=bad-return-type
 
                 except OSError:
                     # Yes, errors could occur when trying to stat() it. For example, trying to
