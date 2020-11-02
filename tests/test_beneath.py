@@ -29,8 +29,17 @@ def test_open_beneath_basic() -> None:
     with pytest.raises(TypeError):
         nixutil.open_beneath("/", os.O_RDONLY, dir_fd="a")  # type: ignore
 
+    with pytest.raises(TypeError):
+        nixutil.open_beneath(
+            "/", os.O_RDONLY, dir_fd="a", audit_func=lambda desc, fd, name: None  # type: ignore
+        )
+
     # Not inheritable
     with open_beneath_managed("/", os.O_RDONLY) as fd:
+        assert not os.get_inheritable(fd)
+
+    # Not inheritable
+    with open_beneath_managed("/", os.O_RDONLY, audit_func=lambda desc, fd, name: None) as fd:
         assert not os.get_inheritable(fd)
 
     # Basic errors
@@ -38,9 +47,17 @@ def test_open_beneath_basic() -> None:
     with pytest.raises(FileNotFoundError):
         nixutil.open_beneath("", os.O_RDONLY)
 
+    with pytest.raises(FileNotFoundError):
+        nixutil.open_beneath("", os.O_RDONLY, audit_func=lambda desc, fd, name: None)
+
     with open(sys.executable) as file:
         with pytest.raises(NotADirectoryError):
             nixutil.open_beneath("a", os.O_RDONLY, dir_fd=file.fileno())
+
+        with pytest.raises(NotADirectoryError):
+            nixutil.open_beneath(
+                "a", os.O_RDONLY, dir_fd=file.fileno(), audit_func=lambda desc, fd, name: None
+            )
 
 
 def test_open_beneath(tmp_path: pathlib.Path) -> None:
