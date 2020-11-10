@@ -10,59 +10,59 @@ import nixutil
 from .util import managed_open
 
 
-def test_recover_fd_path_dir(tmpdir: pathlib.Path) -> None:
-    with managed_open(tmpdir, os.O_RDONLY) as fd:
-        assert nixutil.recover_fd_path(fd) == os.path.realpath(tmpdir)
+def test_recover_fd_path_dir(tmp_path: pathlib.Path) -> None:
+    with managed_open(tmp_path, os.O_RDONLY) as fd:
+        assert nixutil.recover_fd_path(fd) == os.path.realpath(tmp_path)
 
-    with managed_open(tmpdir, os.O_RDONLY) as fd:
-        assert nixutil.recover_fd_path(fd) == os.path.realpath(tmpdir)
+    with managed_open(tmp_path, os.O_RDONLY) as fd:
+        assert nixutil.recover_fd_path(fd) == os.path.realpath(tmp_path)
 
     with managed_open("/", os.O_RDONLY) as fd:
         assert nixutil.recover_fd_path(fd) == "/"
 
 
-def test_recover_fd_path_link(tmpdir: pathlib.Path) -> None:
-    os.mkdir(tmpdir / "dir")
-    os.symlink("dir", tmpdir / "link")
+def test_recover_fd_path_link(tmp_path: pathlib.Path) -> None:
+    os.mkdir(tmp_path / "dir")
+    os.symlink("dir", tmp_path / "link")
 
-    with managed_open(tmpdir / "link", os.O_RDONLY) as fd:
+    with managed_open(tmp_path / "link", os.O_RDONLY) as fd:
         # The path that's returned is the path *after* resolving symlinks
-        assert nixutil.recover_fd_path(fd) == os.path.realpath(tmpdir / "dir")
+        assert nixutil.recover_fd_path(fd) == os.path.realpath(tmp_path / "dir")
 
 
-def test_recover_fd_path_moved(tmpdir: pathlib.Path) -> None:
-    os.mkdir(tmpdir / "dir")
+def test_recover_fd_path_moved(tmp_path: pathlib.Path) -> None:
+    os.mkdir(tmp_path / "dir")
 
-    with managed_open(tmpdir / "dir", os.O_RDONLY) as fd:
-        os.rename(tmpdir / "dir", tmpdir / "dir2")
+    with managed_open(tmp_path / "dir", os.O_RDONLY) as fd:
+        os.rename(tmp_path / "dir", tmp_path / "dir2")
 
         # The path that's returned is the *new* path
-        assert nixutil.recover_fd_path(fd) == os.path.realpath(tmpdir / "dir2")
+        assert nixutil.recover_fd_path(fd) == os.path.realpath(tmp_path / "dir2")
 
 
-def test_recover_fd_path_dir_deleted(tmpdir: pathlib.Path) -> None:
-    os.mkdir(tmpdir / "a")
+def test_recover_fd_path_dir_deleted(tmp_path: pathlib.Path) -> None:
+    os.mkdir(tmp_path / "a")
 
-    with managed_open(tmpdir / "a", os.O_RDONLY) as fd:
-        os.rmdir(tmpdir / "a")
+    with managed_open(tmp_path / "a", os.O_RDONLY) as fd:
+        os.rmdir(tmp_path / "a")
 
         # Either it returns the correct path or raises a FileNotFoundError.
         try:
-            assert nixutil.recover_fd_path(fd) == os.path.join(os.path.realpath(tmpdir), "a")
+            assert nixutil.recover_fd_path(fd) == os.path.join(os.path.realpath(tmp_path), "a")
         except FileNotFoundError:
             pass
 
 
-def test_recover_fd_path_dir_fallback(tmpdir: pathlib.Path) -> None:
+def test_recover_fd_path_dir_fallback(tmp_path: pathlib.Path) -> None:
     old_func = nixutil.plat_util.try_recover_fd_path
     del nixutil.plat_util.try_recover_fd_path
 
     try:
-        with managed_open(tmpdir, os.O_RDONLY) as fd:
-            assert nixutil.recover_fd_path(fd) == os.path.realpath(tmpdir)
+        with managed_open(tmp_path, os.O_RDONLY) as fd:
+            assert nixutil.recover_fd_path(fd) == os.path.realpath(tmp_path)
 
         # Without OS-specific help, ENOTSUP is raised for regular files
-        with open(tmpdir / "a", "w") as file:
+        with open(tmp_path / "a", "w") as file:
             with pytest.raises(OSError, match=r"[nN]ot supported"):
                 nixutil.recover_fd_path(file.fileno())
 
@@ -70,10 +70,10 @@ def test_recover_fd_path_dir_fallback(tmpdir: pathlib.Path) -> None:
         nixutil.plat_util.try_recover_fd_path = old_func
 
 
-def test_recover_fd_path_file(tmpdir: pathlib.Path) -> None:
-    with open(tmpdir / "a", "w") as file:
+def test_recover_fd_path_file(tmp_path: pathlib.Path) -> None:
+    with open(tmp_path / "a", "w") as file:
         try:
-            assert nixutil.recover_fd_path(file.fileno()) == os.path.realpath(tmpdir / "a")
+            assert nixutil.recover_fd_path(file.fileno()) == os.path.realpath(tmp_path / "a")
         except OSError as ex:
             if ex.errno == errno.ENOTSUP:
                 pytest.skip("Recovering paths of regular files not supported")
