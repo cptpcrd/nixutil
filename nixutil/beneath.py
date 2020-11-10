@@ -45,6 +45,74 @@ def open_beneath(
     remember_parents: bool = False,
     audit_func: Optional[Callable[[str, int, AnyStr], None]] = None,
 ) -> int:
+    """
+    Open a file "beneath" a given directory.
+
+    This function guarantees that no ``..`` component in ``path``, or in a symbolic link encountered
+    in resolving ``path``, will ever be allowed to escape the "root" directory specified by
+    ``dir_fd``. (In very specific circumstances, race conditions may allow multiple ``..``
+    components in a row to cause ``open_beneath()`` to temporarily leave the directory in question,
+    but it will check for such an escape before continuing and resolving any non-``..`` components).
+
+    Currently, ``open_beneath()`` is able to take advantage of OS-specific path resolution features
+    on the following platforms:
+
+    - Linux 5.6+
+
+    The ``path``, ``flags``, and ``mode`` arguments are as for ``os.open(...)``.
+
+    If ``dir_fd`` is given and not ``None``, it is used to determine the directory relative to which
+    paths will be resolved. Otherwise, the current working directory is used.
+
+    ``path`` can be an absolute path, or it can contain references to symlinks that target absolute
+    paths. In either case, the path is interpreted as if the process had ``chroot()``ed to the
+    directory referenced by ``dir_fd`` (or the current working directory, as described above).
+
+    If ``no_symlinks`` is True, no symlinks will be allowed during resolution of the path.
+
+    If ``audit_func`` is not ``None``, it indicates a function that will be called to "audit"
+    components of the path as they are resolved. The function will be called with three arguments:
+    a "description" string indicating the context, a file descriptor referring to the most recently
+    resolved directory, and a path whose meaning depends on the "description". The following
+    "descriptions" are currently used (though more may be added):
+
+    - ``"before"``: This is called at each stage of the path resolution, just before the next
+      component is resolved. In this case, the third argument is the component that is about to be
+      resolved (which may be ``/`` or ``..``).
+    - ``"symlink"``: This is called immediately after encountering a symbolic link. In this case,
+      the third argument is the target of the symlink that was encountered.
+
+    The function should NOT perform any operations on the given file descriptor, or behavior is
+    undefined. Additionally, it should always return ``None``; other return values may have special
+    meanings in the future.
+
+    If an exception is raised in an ``audit_func``, ``open_beneath()`` will clean up properly and
+    pass the exception up to the caller.
+
+    Here is an example ``audit_func`` that blocks ``..`` components in symlinks::
+
+        def audit(desc, cur_fd, path):
+            if desc == "symlink":
+                while path:
+                    path, part = os.path.split(path.rstrip("/"))
+                    if part == "..":
+                        raise RuntimeError("'..' component encountered")
+
+    If ``remember_parents`` is True, it triggers an alternate escape prevention strategy. This flag
+    makes ``open_beneath()`` retain open file descriptors to all of the directories it has
+    previously seen. This allows it to simply rewind back to those directories when encountering a
+    ``..`` element, instead of having to perform potentially inefficient escape detection. (By
+    default, after a series of ``..`` elements, ``open_beneath()`` has to check that the current
+    directory is still contained within the "root".)
+
+    This is more efficient, but it requires a large number of file descriptors, and a malicious
+    attacker in control of the specified ``path`` *or* the filesystem could easily cause
+    ``open_beneath()`` to exhaust all the available file descriptors. Use with caution!
+
+    Note: If ``open_beneath`` is able to take advantage of OS-specific path resolution features,
+    then ``remember_parents`` is ignored.
+    """
+
     path = os.fspath(path)
 
     if audit_func is None and _try_open_beneath is not None:
