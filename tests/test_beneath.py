@@ -172,3 +172,53 @@ def test_open_beneath_escape(tmp_path: pathlib.Path) -> None:
                 nixutil.open_beneath(path, os.O_RDONLY, dir_fd=a_dfd, audit_func=audit_func)
 
             os.rename(tmp_path / "b", tmp_path / "a/b")
+
+
+def test_open_beneath_execute(tmp_path: pathlib.Path) -> None:
+    if nixutil.beneath.DIR_OPEN_FLAGS == os.O_DIRECTORY | os.O_RDONLY:
+        # No extra flags like O_PATH or O_SEARCH available on the current platform
+        pytest.skip(
+            "Unable to look in subdirectories without 'read' permission on the current platform"
+        )
+
+    os.mkdir(tmp_path / "a")
+
+    with open(tmp_path / "a/b", "w"):
+        pass
+
+    os.symlink("b", tmp_path / "a/c")
+
+    try:
+        # 0o100 is "--x------"; i.e. execute permission but not read permission.
+        # That allows us to look at files within the directory, but not list the directory (or open
+        # it without O_PATH or O_SEARCH).
+        os.chmod(tmp_path / "a", 0o100)
+
+        with managed_open(tmp_path, os.O_RDONLY) as tmp_dfd:
+            for remember_parents, audit_func in itertools.product(
+                [False, True], [None, lambda desc, fd, name: None]
+            ):
+                for path in ["a/b", "a/c"]:
+                    expect_stat = os.stat(path, dir_fd=tmp_dfd)
+
+                    with open_beneath_managed(
+                        path,
+                        os.O_RDONLY,
+                        dir_fd=tmp_dfd,
+                        audit_func=audit_func,
+                        remember_parents=remember_parents,
+                    ) as fd:
+                        assert os.path.samestat(os.fstat(fd), expect_stat)
+
+                with pytest.raises(PermissionError):
+                    nixutil.open_beneath(
+                        "a",
+                        os.O_RDONLY,
+                        dir_fd=tmp_dfd,
+                        audit_func=audit_func,
+                        remember_parents=remember_parents,
+                    )
+
+    finally:
+        # chmod() it back so pytest can remove it
+        os.chmod(tmp_path / "a", 0o755)
