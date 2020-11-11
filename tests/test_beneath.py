@@ -90,6 +90,7 @@ def test_open_beneath(tmp_path: pathlib.Path) -> None:
             for (path, flags, stat_fname) in [
                 ("/", os.O_RDONLY, None),
                 ("..", os.O_RDONLY, None),
+                ("../..", os.O_RDONLY, None),
                 (".", os.O_RDONLY, None),
                 ("/..", os.O_RDONLY, None),
                 ("a/..", os.O_RDONLY, None),
@@ -99,6 +100,7 @@ def test_open_beneath(tmp_path: pathlib.Path) -> None:
                 ("a/e/../..", os.O_RDONLY, None),
                 ("a/e/../../..", os.O_RDONLY, None),
                 ("a", os.O_RDONLY, "a"),
+                ("./a", os.O_RDONLY, "a"),
                 ("a/.", os.O_RDONLY, "a"),
                 ("a/e/..", os.O_RDONLY, "a"),
                 ("a/e", os.O_RDONLY, "a/e"),
@@ -111,9 +113,18 @@ def test_open_beneath(tmp_path: pathlib.Path) -> None:
                 (b"f/..", os.O_RDONLY, "a"),
                 ("f/..", os.O_RDONLY | os.O_NOFOLLOW, "a"),
                 ("a/e/g", os.O_RDONLY, "b"),
+                ("a/./e/g", os.O_RDONLY, "b"),
                 ("a/e/h", os.O_RDONLY, "b"),
                 ("a/e/i/e", os.O_RDONLY, "a/e"),
                 ("a/e/j/..", os.O_RDONLY, "a/e"),
+                ("b", os.O_WRONLY, "b"),
+                ("b", os.O_RDWR, "b"),
+                ("c", os.O_WRONLY, "b"),
+                ("c", os.O_RDWR, "b"),
+                ("a/e/g", os.O_WRONLY, "b"),
+                ("a/e/g", os.O_RDWR, "b"),
+                ("a/e/h", os.O_WRONLY, "b"),
+                ("a/e/h", os.O_RDWR, "b"),
             ]:
                 expect_stat = (
                     tmp_stat
@@ -142,6 +153,11 @@ def test_open_beneath(tmp_path: pathlib.Path) -> None:
                 ("recur", os.O_RDONLY, {"no_symlinks": False}, errno.ELOOP),
                 ("a/../recur", os.O_RDONLY, {"no_symlinks": False}, errno.ELOOP),
                 ("recur/a", os.O_RDONLY, {"no_symlinks": False}, errno.ELOOP),
+                ("/", os.O_WRONLY, {"no_symlinks": False}, errno.EISDIR),
+                (".", os.O_WRONLY, {"no_symlinks": False}, errno.EISDIR),
+                ("..", os.O_WRONLY, {"no_symlinks": False}, errno.EISDIR),
+                ("a/.", os.O_WRONLY, {"no_symlinks": False}, errno.EISDIR),
+                ("a/..", os.O_WRONLY, {"no_symlinks": False}, errno.EISDIR),
             ]:
                 with pytest.raises(
                     OSError, match="^" + re.escape("[Errno {}] {}".format(eno, os.strerror(eno)))
