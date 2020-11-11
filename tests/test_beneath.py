@@ -61,6 +61,30 @@ def test_open_beneath_basic() -> None:
             )
 
 
+def test_open_beneath_root(tmp_path: pathlib.Path) -> None:
+    with managed_open("/", os.O_RDONLY) as root_dfd:
+        for remember_parents, audit_func in itertools.product(
+            [False, True], [None, lambda desc, fd, name: None]
+        ):
+            with open_beneath_managed(
+                tmp_path,
+                os.O_RDONLY,
+                dir_fd=root_dfd,
+                remember_parents=remember_parents,
+                audit_func=audit_func,
+            ) as fd:
+                assert os.path.samestat(os.fstat(fd), os.stat(tmp_path))
+
+            with open_beneath_managed(
+                str(tmp_path) + "/.." * (str(tmp_path).count("/") + 2),
+                os.O_RDONLY,
+                dir_fd=root_dfd,
+                remember_parents=remember_parents,
+                audit_func=audit_func,
+            ) as fd:
+                assert os.path.sameopenfile(fd, root_dfd)
+
+
 def test_open_beneath(tmp_path: pathlib.Path) -> None:
     os.mkdir(tmp_path / "a")
 
