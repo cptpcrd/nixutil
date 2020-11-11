@@ -110,6 +110,7 @@ def test_recover_fd_path_bad_file() -> None:
         os.close(w_fd)
 
 
+@pytest.mark.skipif(os.geteuid() == 0, "Cannot run permissions-related tests as root")
 def test_recover_fd_path_execute(tmp_path: pathlib.Path) -> None:
     os.mkdir(tmp_path / "a")
     os.mkdir(tmp_path / "a/b")
@@ -138,6 +139,7 @@ def test_recover_fd_path_execute(tmp_path: pathlib.Path) -> None:
             nixutil.plat_util.try_recover_fd_path = old_func
 
 
+@pytest.mark.skipif(os.geteuid() == 0, "Cannot run permissions-related tests as root")
 def test_recover_fd_path_no_execute(tmp_path: pathlib.Path) -> None:
     os.mkdir(tmp_path / "a")
     os.mkdir(tmp_path / "a/b")
