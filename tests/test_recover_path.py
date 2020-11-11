@@ -106,3 +106,55 @@ def test_recover_fd_path_bad_file() -> None:
     finally:
         os.close(r_fd)
         os.close(w_fd)
+
+
+def test_recover_fd_path_execute(tmp_path: pathlib.Path) -> None:
+    os.mkdir(tmp_path / "a")
+    os.mkdir(tmp_path / "a/b")
+
+    old_func = nixutil.plat_util.try_recover_fd_path
+    del nixutil.plat_util.try_recover_fd_path
+
+    try:
+        with managed_open(tmp_path / "a/b", os.O_RDONLY) as b_dfd:
+            try:
+                # 0o100 is "--x------"; i.e. execute permission but not read permission.
+                # That allows us to access files in the directory, but not list it.
+                os.chmod(tmp_path / "a", 0o100)
+
+                # Fails with EACCES when trying to open the directory
+                with pytest.raises(PermissionError):
+                    nixutil.recover_fd_path(b_dfd)
+
+            finally:
+                # chmod() it back so pytest can remove it
+                os.chmod(tmp_path / "a", 0o755)
+
+    finally:
+        nixutil.plat_util.try_recover_fd_path = old_func
+
+
+def test_recover_fd_path_no_execute(tmp_path: pathlib.Path) -> None:
+    os.mkdir(tmp_path / "a")
+    os.mkdir(tmp_path / "a/b")
+
+    old_func = nixutil.plat_util.try_recover_fd_path
+    del nixutil.plat_util.try_recover_fd_path
+
+    try:
+        with managed_open(tmp_path / "a/b", os.O_RDONLY) as b_dfd:
+            try:
+                # 0o400 is "r--------"; i.e. read permission but not execute permission.
+                # That allows us to list the directory, but not access files in it.
+                os.chmod(tmp_path / "a", 0o400)
+
+                # Fails with ENOENT after failing to stat() any of the entries and reaching the end
+                with pytest.raises(FileNotFoundError):
+                    nixutil.recover_fd_path(b_dfd)
+
+            finally:
+                # chmod() it back so pytest can remove it
+                os.chmod(tmp_path / "a", 0o755)
+
+    finally:
+        nixutil.plat_util.try_recover_fd_path = old_func
