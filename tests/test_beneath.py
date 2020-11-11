@@ -99,6 +99,8 @@ def test_open_beneath(tmp_path: pathlib.Path) -> None:
                 ("/a/..", os.O_RDONLY, None),
                 ("a/../..", os.O_RDONLY, None),
                 ("/a/../..", os.O_RDONLY, None),
+                ("a/../../..", os.O_RDONLY, None),
+                ("/a/../../..", os.O_RDONLY, None),
                 ("a/e/../..", os.O_RDONLY, None),
                 ("a/e/../../..", os.O_RDONLY, None),
                 ("a", os.O_RDONLY, "a"),

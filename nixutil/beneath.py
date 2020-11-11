@@ -263,7 +263,7 @@ def _open_beneath(
                             cur_fd = dir_fd
 
                     else:
-                        if os.path.samestat(os.fstat(cur_fd), dir_fd_stat):
+                        if cur_fd == dir_fd or os.path.samestat(os.fstat(cur_fd), dir_fd_stat):
                             # We hit the root; stay there
                             cur_fd = dir_fd
                             saw_parent_elem = False
