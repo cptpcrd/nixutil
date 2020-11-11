@@ -76,6 +76,7 @@ def test_open_beneath(tmp_path: pathlib.Path) -> None:
 
     os.symlink("../../b", tmp_path / "a/e/g")
     os.symlink("/b", tmp_path / "a/e/h")
+    os.symlink("/b/", tmp_path / "a/e/bad")
     os.symlink("/a", tmp_path / "a/e/i")
 
     os.mkdir(tmp_path / "a/e/j")
@@ -154,6 +155,8 @@ def test_open_beneath(tmp_path: pathlib.Path) -> None:
             for (path, flags, kwargs, eno) in [
                 ("NOEXIST", os.O_RDONLY, {"no_symlinks": True}, errno.ENOENT),
                 ("a/NOEXIST", os.O_RDONLY, {"no_symlinks": True}, errno.ENOENT),
+                ("b/", os.O_RDONLY, {"no_symlinks": True}, errno.ENOTDIR),
+                ("b/", os.O_RDONLY, {"no_symlinks": False}, errno.ENOTDIR),
                 ("b/a", os.O_RDONLY, {"no_symlinks": True}, errno.ENOTDIR),
                 ("d", os.O_RDONLY, {"no_symlinks": True}, errno.ELOOP),
                 ("d", os.O_RDONLY | os.O_NOFOLLOW, {"no_symlinks": False}, errno.ELOOP),
@@ -168,6 +171,14 @@ def test_open_beneath(tmp_path: pathlib.Path) -> None:
                 ("..", os.O_WRONLY, {"no_symlinks": False}, errno.EISDIR),
                 ("a/.", os.O_WRONLY, {"no_symlinks": False}, errno.EISDIR),
                 ("a/..", os.O_WRONLY, {"no_symlinks": False}, errno.EISDIR),
+                ("a", os.O_WRONLY, {"no_symlinks": False}, errno.EISDIR),
+                ("a/", os.O_WRONLY, {"no_symlinks": False}, errno.EISDIR),
+                ("a", os.O_DIRECTORY | os.O_WRONLY, {"no_symlinks": False}, errno.EISDIR),
+                ("a/", os.O_DIRECTORY | os.O_WRONLY, {"no_symlinks": False}, errno.EISDIR),
+                ("a/e/g/", os.O_RDONLY, {"no_symlinks": False}, errno.ENOTDIR),
+                ("a/e/h/", os.O_RDONLY, {"no_symlinks": False}, errno.ENOTDIR),
+                ("a/e/bad", os.O_RDONLY, {"no_symlinks": False}, errno.ENOTDIR),
+                ("a/e/bad/", os.O_RDONLY, {"no_symlinks": False}, errno.ENOTDIR),
             ]:
                 with pytest.raises(
                     OSError, match="^" + re.escape("[Errno {}] {}".format(eno, os.strerror(eno)))
