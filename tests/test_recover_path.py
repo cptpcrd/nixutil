@@ -54,8 +54,9 @@ def test_recover_fd_path_dir_deleted(tmp_path: pathlib.Path) -> None:
 
 
 def test_recover_fd_path_dir_fallback(tmp_path: pathlib.Path) -> None:
-    old_func = nixutil.plat_util.try_recover_fd_path
-    del nixutil.plat_util.try_recover_fd_path
+    old_func = getattr(nixutil.plat_util, "try_recover_fd_path", None)
+    if old_func is not None:
+        del nixutil.plat_util.try_recover_fd_path
 
     try:
         with managed_open(tmp_path, os.O_RDONLY) as fd:
@@ -67,7 +68,8 @@ def test_recover_fd_path_dir_fallback(tmp_path: pathlib.Path) -> None:
                 nixutil.recover_fd_path(file.fileno())
 
     finally:
-        nixutil.plat_util.try_recover_fd_path = old_func
+        if old_func is not None:
+            nixutil.plat_util.try_recover_fd_path = old_func
 
 
 def test_recover_fd_path_file(tmp_path: pathlib.Path) -> None:
@@ -112,8 +114,9 @@ def test_recover_fd_path_execute(tmp_path: pathlib.Path) -> None:
     os.mkdir(tmp_path / "a")
     os.mkdir(tmp_path / "a/b")
 
-    old_func = nixutil.plat_util.try_recover_fd_path
-    del nixutil.plat_util.try_recover_fd_path
+    old_func = getattr(nixutil.plat_util, "try_recover_fd_path", None)
+    if old_func is not None:
+        del nixutil.plat_util.try_recover_fd_path
 
     try:
         with managed_open(tmp_path / "a/b", os.O_RDONLY) as b_dfd:
@@ -131,15 +134,17 @@ def test_recover_fd_path_execute(tmp_path: pathlib.Path) -> None:
                 os.chmod(tmp_path / "a", 0o755)
 
     finally:
-        nixutil.plat_util.try_recover_fd_path = old_func
+        if old_func is not None:
+            nixutil.plat_util.try_recover_fd_path = old_func
 
 
 def test_recover_fd_path_no_execute(tmp_path: pathlib.Path) -> None:
     os.mkdir(tmp_path / "a")
     os.mkdir(tmp_path / "a/b")
 
-    old_func = nixutil.plat_util.try_recover_fd_path
-    del nixutil.plat_util.try_recover_fd_path
+    old_func = getattr(nixutil.plat_util, "try_recover_fd_path", None)
+    if old_func is not None:
+        del nixutil.plat_util.try_recover_fd_path
 
     try:
         with managed_open(tmp_path / "a/b", os.O_RDONLY) as b_dfd:
@@ -157,4 +162,5 @@ def test_recover_fd_path_no_execute(tmp_path: pathlib.Path) -> None:
                 os.chmod(tmp_path / "a", 0o755)
 
     finally:
-        nixutil.plat_util.try_recover_fd_path = old_func
+        if old_func is not None:
+            nixutil.plat_util.try_recover_fd_path = old_func
