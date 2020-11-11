@@ -247,19 +247,31 @@ def _open_beneath(
                     assert not saw_parent_elem
 
                 elif part == dotdot:
-                    if cur_fd != dir_fd:
-                        if remember_parents:
-                            cur_fd = parent_fds.pop() if parent_fds else dir_fd
-                        else:
-                            if os.path.samestat(os.fstat(cur_fd), dir_fd_stat):
-                                # We hit the root; stay there
-                                cur_fd = dir_fd
-                                saw_parent_elem = False
+                    if remember_parents:
+                        if parent_fds:
+                            if flags == DIR_OPEN_FLAGS:
+                                cur_fd = parent_fds.pop()
                             else:
-                                cur_fd = os.open("..", flags, dir_fd=cur_fd)
-                                saw_parent_elem = True
+                                cur_fd = os.open(".", flags, dir_fd=parent_fds[-1])
+                                os.close(parent_fds.pop())
 
-                elif part != dot:
+                        else:
+                            cur_fd = dir_fd
+
+                    else:
+                        if os.path.samestat(os.fstat(cur_fd), dir_fd_stat):
+                            # We hit the root; stay there
+                            cur_fd = dir_fd
+                            saw_parent_elem = False
+                        else:
+                            cur_fd = os.open("..", flags, dir_fd=cur_fd)
+                            saw_parent_elem = True
+
+                elif part == dot:
+                    if cur_fd != dir_fd and flags != DIR_OPEN_FLAGS:
+                        cur_fd = os.open(".", flags, dir_fd=cur_fd)
+
+                else:
                     if saw_parent_elem:
                         # Check that we didn't escape *before* trying to open anything.
                         # This will avoid problems with potential information leakage based on the
@@ -350,4 +362,4 @@ def _open_beneath(
         for fd in parent_fds:
             os.close(fd)
 
-    return os.dup(cur_fd) if cur_fd == dir_fd else cur_fd
+    return os.open(".", flags=orig_flags, dir_fd=dir_fd) if cur_fd == dir_fd else cur_fd
