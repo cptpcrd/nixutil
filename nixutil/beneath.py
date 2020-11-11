@@ -231,6 +231,10 @@ def _open_beneath(
         while parts:
             part, flags = parts.popleft()
 
+            # Sanity check -- `flags` can only ever be something other than DIR_OPEN_FLAGS if there
+            # are no components left
+            assert flags == DIR_OPEN_FLAGS or not parts
+
             if audit_func is not None:
                 audit_func("before", cur_fd, part)
 
