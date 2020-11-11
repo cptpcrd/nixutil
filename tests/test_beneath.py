@@ -1,5 +1,6 @@
 import contextlib
 import errno
+import fcntl
 import itertools
 import os
 import pathlib
@@ -140,6 +141,15 @@ def test_open_beneath(tmp_path: pathlib.Path) -> None:
                     audit_func=audit_func,
                 ) as fd:
                     assert os.path.samestat(os.stat(fd), expect_stat)
+
+                    fd_flags = fcntl.fcntl(fd, fcntl.F_GETFL)
+
+                    if sys.platform.startswith("linux"):
+                        # 0o100000 is O_LARGEFILE; it may be added by the libc
+                        fd_flags &= ~0o100000
+
+                    # Ignore O_NOFOLLOW on either side; it may be added if not present
+                    assert fd_flags & ~os.O_NOFOLLOW == flags & ~os.O_NOFOLLOW
 
             for (path, flags, kwargs, eno) in [
                 ("NOEXIST", os.O_RDONLY, {"no_symlinks": True}, errno.ENOENT),
