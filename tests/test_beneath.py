@@ -288,14 +288,15 @@ def test_open_beneath_execute(tmp_path: pathlib.Path) -> None:
                     ) as fd:
                         assert os.path.samestat(os.fstat(fd), expect_stat)
 
-                with pytest.raises(PermissionError):
-                    nixutil.open_beneath(
-                        "a",
-                        os.O_RDONLY,
-                        dir_fd=tmp_dfd,
-                        audit_func=audit_func,
-                        remember_parents=remember_parents,
-                    )
+                if os.geteuid() != 0:
+                    with pytest.raises(PermissionError):
+                        nixutil.open_beneath(
+                            "a",
+                            os.O_RDONLY,
+                            dir_fd=tmp_dfd,
+                            audit_func=audit_func,
+                            remember_parents=remember_parents,
+                        )
 
     finally:
         # chmod() it back so pytest can remove it
