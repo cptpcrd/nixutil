@@ -47,10 +47,8 @@ def test_recover_fd_path_dir_deleted(tmp_path: pathlib.Path) -> None:
         os.rmdir(tmp_path / "a")
 
         # Either it returns the correct path or raises a FileNotFoundError.
-        try:
-            assert nixutil.recover_fd_path(fd) == os.path.join(os.path.realpath(tmp_path), "a")
-        except FileNotFoundError:
-            pass
+        with pytest.raises(FileNotFoundError):
+            nixutil.recover_fd_path(fd)
 
 
 def test_recover_fd_path_dir_fallback(tmp_path: pathlib.Path) -> None:
