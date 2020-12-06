@@ -286,6 +286,21 @@ def _open_beneath(
 
                     try:
                         cur_fd = os.open(part, flags | os.O_NOFOLLOW, mode=mode, dir_fd=cur_fd)
+
+                        # On Linux, O_PATH|O_NOFOLLOW will return a file descriptor open to the *symlink*
+                        # (though adding in O_DIRECTORY will prevent this by only allowing a directory). Since
+                        # we "add in" O_NOFOLLOW, if O_PATH was specified and neither O_NOFOLLOW nor
+                        # O_DIRECTORY was, we might accidentally open a symlink when that isn't what the user
+                        # wants.
+                        #
+                        # So let's check if it's a symlink in that case.
+
+                        if flags & (os.O_PATH | os.O_NOFOLLOW | os.O_DIRECTORY) == os.O_PATH:
+                            if stat.S_ISLNK(os.stat(cur_fd).st_mode):
+                                os.close(cur_fd)
+                                cur_fd = old_fd
+                                raise ffi.build_oserror(errno.ELOOP, orig_path)
+
                     except OSError as ex:
                         # When flags=O_DIRECTORY|O_NOFLLOW, if the last component is a symlink then
                         # it will fail with ENOTDIR.
