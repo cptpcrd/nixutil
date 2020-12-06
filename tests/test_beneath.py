@@ -113,7 +113,7 @@ def test_open_beneath(tmp_path: pathlib.Path) -> None:
         for remember_parents, audit_func in itertools.product(
             [False, True], [None, lambda desc, fd, name: None]
         ):
-            for (path, flags, stat_fname) in [
+            try_paths = [
                 ("/", os.O_RDONLY, None),
                 ("..", os.O_RDONLY, None),
                 ("../..", os.O_RDONLY, None),
@@ -128,8 +128,6 @@ def test_open_beneath(tmp_path: pathlib.Path) -> None:
                 ("a/e/../..", os.O_RDONLY, None),
                 ("a/e/../../..", os.O_RDONLY, None),
                 ("a", os.O_RDONLY, "a"),
-                ("a", os.O_PATH, "a"),
-                ("a", os.O_PATH | os.O_NOFOLLOW, "a"),
                 ("./a", os.O_RDONLY, "a"),
                 ("a/.", os.O_RDONLY, "a"),
                 ("a/e/..", os.O_RDONLY, "a"),
@@ -139,8 +137,6 @@ def test_open_beneath(tmp_path: pathlib.Path) -> None:
                 ("c", os.O_RDONLY, "b"),
                 ("d", os.O_RDONLY, "b"),
                 ("f", os.O_RDONLY, "a/e"),
-                ("f", os.O_PATH, "a/e"),
-                ("f", os.O_PATH | os.O_NOFOLLOW, "f"),
                 ("f/..", os.O_RDONLY, "a"),
                 (b"f/..", os.O_RDONLY, "a"),
                 ("f/..", os.O_RDONLY | os.O_NOFOLLOW, "a"),
@@ -157,7 +153,19 @@ def test_open_beneath(tmp_path: pathlib.Path) -> None:
                 ("a/e/g", os.O_RDWR, "b"),
                 ("a/e/h", os.O_WRONLY, "b"),
                 ("a/e/h", os.O_RDWR, "b"),
-            ]:
+            ]
+
+            if sys.platform.startswith("linux"):
+                try_paths.extend(
+                    [
+                        ("a", os.O_PATH, "a"),
+                        ("a", os.O_PATH | os.O_NOFOLLOW, "a"),
+                        ("f", os.O_PATH, "a/e"),
+                        ("f", os.O_PATH | os.O_NOFOLLOW, "f"),
+                    ]
+                )
+
+            for (path, flags, stat_fname) in try_paths:
                 expect_stat = (
                     tmp_stat
                     if stat_fname is None
