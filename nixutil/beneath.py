@@ -2,6 +2,7 @@ import collections
 import errno
 import os
 import stat
+import sys
 from typing import AnyStr, Callable, Generator, List, Optional, Tuple, Union
 
 from . import ffi, plat_util
