@@ -256,6 +256,9 @@ def test_open_beneath_execute(tmp_path: pathlib.Path) -> None:
             "Unable to look in subdirectories without 'read' permission on the current platform"
         )
 
+    if os.geteuid() == 0:
+        pytest.skip("Unable to run 'execute' test when running as root")
+
     os.mkdir(tmp_path / "a")
 
     with open(tmp_path / "a/b", "w"):
