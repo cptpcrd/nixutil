@@ -53,6 +53,11 @@ def try_open_beneath(
     if no_symlinks:
         resolve_flags |= RESOLVE_NO_SYMLINKS
 
+    if flags & os.O_PATH:
+        # If we have O_PATH, throw out everything except the O_PATH and the flags that work with it.
+        # O_CLOEXEC is missing from this list; we add it in below.
+        flags &= os.O_PATH | os.O_DIRECTORY | os.O_NOFOLLOW
+
     how = _OpenHow(
         flags=flags | os.O_CLOEXEC,
         mode=(
