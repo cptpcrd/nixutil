@@ -116,6 +116,8 @@ def open_beneath(
 
     path = os.fspath(path)
 
+    flags |= os.O_NOCTTY
+
     if audit_func is None and _try_open_beneath is not None:
         fd = _try_open_beneath(path, flags, mode=mode, dir_fd=dir_fd, no_symlinks=no_symlinks)
         if fd is not None:
