@@ -83,7 +83,7 @@ def try_open_beneath(
             return fd
 
         eno = ctypes.get_errno()
-        if eno in (errno.E2BIG, errno.ENOSYS):
+        if eno in (errno.E2BIG, errno.ENOSYS, errno.EPERM):
             return None
         elif eno != errno.EINTR:
             raise ffi.build_oserror(eno, os.fsdecode(path))
