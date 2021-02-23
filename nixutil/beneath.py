@@ -293,7 +293,9 @@ def _open_beneath(
                         saw_parent_elem = False
 
                     try:
-                        cur_fd = os.open(part, flags | os.O_NOCTTY | os.O_NOFOLLOW, mode=mode, dir_fd=cur_fd)
+                        cur_fd = os.open(
+                            part, flags | os.O_NOCTTY | os.O_NOFOLLOW, mode=mode, dir_fd=cur_fd
+                        )
 
                         # On Linux, O_PATH|O_NOFOLLOW will return a file descriptor open to the
                         # *symlink* (though adding in O_DIRECTORY will prevent this by only allowing
@@ -392,4 +394,6 @@ def _open_beneath(
         for fd in parent_fds:
             os.close(fd)
 
-    return os.open(".", flags=orig_flags | os.O_NOCTTY, dir_fd=dir_fd) if cur_fd == dir_fd else cur_fd
+    return (
+        os.open(".", flags=orig_flags | os.O_NOCTTY, dir_fd=dir_fd) if cur_fd == dir_fd else cur_fd
+    )
