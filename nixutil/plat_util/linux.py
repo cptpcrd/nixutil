@@ -55,10 +55,12 @@ def try_open_beneath(
 
     flags |= os.O_CLOEXEC | os.O_NOCTTY
 
-    if flags & os.O_PATH:
+    if flags & os.O_PATH:  # pylint: disable=no-member
         # If we have O_PATH, throw out everything except the O_PATH and the flags that work with it.
         # O_CLOEXEC is missing from this list; we add it in below.
-        flags &= os.O_PATH | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+        flags &= (
+            os.O_PATH | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC  # pylint: disable=no-member
+        )
 
     how = _OpenHow(
         flags=flags,

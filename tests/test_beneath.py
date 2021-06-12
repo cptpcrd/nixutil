@@ -156,6 +156,7 @@ def test_open_beneath(tmp_path: pathlib.Path) -> None:
             ]
 
             if sys.platform.startswith("linux"):
+                # pylint: disable=no-member
                 try_paths.extend(
                     [
                         ("a", os.O_PATH, "a"),

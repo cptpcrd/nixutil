@@ -307,7 +307,13 @@ def _open_beneath(
 
                         if (
                             sys.platform.startswith("linux")
-                            and flags & (os.O_PATH | os.O_NOFOLLOW | os.O_DIRECTORY) == os.O_PATH
+                            and flags
+                            & (
+                                os.O_PATH  # pylint: disable=no-member
+                                | os.O_NOFOLLOW
+                                | os.O_DIRECTORY
+                            )
+                            == os.O_PATH  # pylint: disable=no-member
                             and stat.S_ISLNK(os.stat(cur_fd).st_mode)
                         ):
                             os.close(cur_fd)
